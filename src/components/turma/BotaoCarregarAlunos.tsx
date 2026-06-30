@@ -20,15 +20,60 @@ async function extrairTextoPdf(file: File): Promise<string> {
   const buffer = await file.arrayBuffer()
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise
 
-  const paginas: string[] = []
+  const linhas: string[] = []
+
   for (let i = 1; i <= doc.numPages; i++) {
     const pagina = await doc.getPage(i)
     const conteudo = await pagina.getTextContent()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const texto = conteudo.items.map((item: any) => item.str ?? '').join(' ')
-    paginas.push(texto)
+
+    let linhaAtual = ''
+    let xFim = 0
+    let yAtual: number | null = null
+
+    for (const item of conteudo.items) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ti = item as any
+      if (!('str' in ti) || !ti.str) continue
+
+      const x: number = ti.transform[4]
+      const y: number = ti.transform[5]
+
+      if (yAtual === null) {
+        yAtual = y
+        linhaAtual = ti.str
+        xFim = x + ti.width
+      } else if (Math.abs(y - yAtual) > 3) {
+        // Mudança de linha — persiste a linha atual e começa nova
+        const trimmed = linhaAtual.replace(/\s+/g, ' ').trim()
+        if (trimmed) linhas.push(trimmed)
+        linhaAtual = ti.str
+        xFim = x + ti.width
+        yAtual = y
+      } else {
+        // Mesma linha — adiciona espaço só se há gap entre os itens
+        const gap = x - xFim
+        if (gap > 0.5 && !linhaAtual.endsWith(' ') && !ti.str.startsWith(' ')) {
+          linhaAtual += ' '
+        }
+        linhaAtual += ti.str
+        xFim = x + ti.width
+      }
+
+      if (ti.hasEOL) {
+        const trimmed = linhaAtual.replace(/\s+/g, ' ').trim()
+        if (trimmed) linhas.push(trimmed)
+        linhaAtual = ''
+        xFim = 0
+        yAtual = null
+      }
+    }
+
+    if (linhaAtual.trim()) {
+      linhas.push(linhaAtual.replace(/\s+/g, ' ').trim())
+    }
   }
-  return paginas.join('\n')
+
+  return linhas.join('\n')
 }
 
 export function BotaoCarregarAlunos({ turmaId }: Props) {

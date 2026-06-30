@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -104,7 +105,13 @@ export default function LoginPage() {
         </form>
       </div>
 
-      <p className="text-center text-indigo-300/60 text-xs mt-6">
+      <p className="text-center mt-5">
+        <Link href="/registro" className="text-indigo-300 hover:text-white text-sm transition-colors">
+          Primeiro acesso? Use seu código de convite →
+        </Link>
+      </p>
+
+      <p className="text-center text-indigo-300/60 text-xs mt-4">
         Secretaria de Estado de Educação do Distrito Federal
       </p>
     </div>

@@ -35,6 +35,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     professor = criado
   }
 
+  const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase())
+  const isAdmin = user.email ? adminEmails.includes(user.email.toLowerCase()) : false
+
   const handleSignOut = async () => {
     'use server'
     const supabase2 = await createServerClient()
@@ -65,6 +68,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
               className="text-indigo-200 hover:text-white hover:bg-white/10 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors">
               Turmas
             </Link>
+            {isAdmin && (
+              <Link href="/admin/convites"
+                className="text-indigo-300 hover:text-white hover:bg-white/10 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors">
+                Convites
+              </Link>
+            )}
           </nav>
 
           <div className="flex items-center gap-4">
