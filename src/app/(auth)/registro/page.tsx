@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 
 export default function RegistroPage() {
   const router = useRouter()
+  const [codigo, setCodigo] = useState('')
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
@@ -28,7 +29,7 @@ export default function RegistroPage() {
     const res = await fetch('/api/auth/registrar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome, email, senha }),
+      body: JSON.stringify({ codigo, nome, email, senha }),
     })
     const data = await res.json()
 
@@ -69,6 +70,21 @@ export default function RegistroPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-indigo-100 mb-1.5">
+                Código de convite <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={codigo}
+                onChange={e => setCodigo(e.target.value.toUpperCase())}
+                className={inputCls}
+                placeholder="XXXX-XXXX"
+                maxLength={9}
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-indigo-100 mb-1.5">
                 Nome completo <span className="text-red-400">*</span>
