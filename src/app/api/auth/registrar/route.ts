@@ -1,6 +1,41 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+const SENTINEL_BOOTSTRAP = '__bootstrap__'
+
+async function validarCodigo(admin: ReturnType<typeof createAdminClient>, codigoRaw: string) {
+  const codigo = codigoRaw.toUpperCase().replace(/[^A-Z0-9]/g, '')
+
+  // Código bootstrap definido nas variáveis de ambiente (uso único)
+  const bootstrapEnv = (process.env.BOOTSTRAP_CODE ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  if (bootstrapEnv && codigo === bootstrapEnv) {
+    const { data: jaUsado } = await admin
+      .from('convites')
+      .select('id')
+      .eq('codigo', SENTINEL_BOOTSTRAP)
+      .eq('usado', true)
+      .maybeSingle()
+
+    if (jaUsado) {
+      return { error: 'Código bootstrap já foi utilizado. Solicite um convite ao administrador.' }
+    }
+    return { bootstrap: true }
+  }
+
+  // Convite gerado normalmente
+  const { data: convite } = await admin
+    .from('convites')
+    .select('*')
+    .eq('codigo', codigo)
+    .eq('usado', false)
+    .maybeSingle()
+
+  if (!convite) {
+    return { error: 'Código de convite inválido ou já utilizado.' }
+  }
+  return { convite }
+}
+
 export async function POST(request: Request) {
   const { codigo, nome, email, senha } = await request.json() as {
     codigo: string
@@ -18,16 +53,9 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient()
 
-  // Valida o convite
-  const { data: convite, error: conviteError } = await admin
-    .from('convites')
-    .select('*')
-    .eq('codigo', codigo.toUpperCase().replace(/[^A-Z0-9]/g, ''))
-    .eq('usado', false)
-    .maybeSingle()
-
-  if (conviteError || !convite) {
-    return NextResponse.json({ error: 'Código de convite inválido ou já utilizado.' }, { status: 400 })
+  const resultado = await validarCodigo(admin, codigo)
+  if (resultado.error) {
+    return NextResponse.json({ error: resultado.error }, { status: 400 })
   }
 
   // Cria o usuário no Supabase Auth
@@ -38,10 +66,11 @@ export async function POST(request: Request) {
   })
 
   if (authError) {
-    if (authError.message.includes('already registered') || authError.message.includes('already been registered')) {
-      return NextResponse.json({ error: 'Este e-mail já está cadastrado.' }, { status: 400 })
-    }
-    return NextResponse.json({ error: authError.message }, { status: 400 })
+    const jaExiste = authError.message.includes('already registered') || authError.message.includes('already been registered')
+    return NextResponse.json(
+      { error: jaExiste ? 'Este e-mail já está cadastrado.' : authError.message },
+      { status: 400 }
+    )
   }
 
   const userId = authData.user.id
@@ -52,16 +81,23 @@ export async function POST(request: Request) {
     .insert({ id: userId, nome: nome.trim() })
 
   if (profError) {
-    // Tenta reverter a criação do usuário para não deixar estado inconsistente
     await admin.auth.admin.deleteUser(userId)
     return NextResponse.json({ error: 'Erro ao criar perfil. Tente novamente.' }, { status: 500 })
   }
 
-  // Marca o convite como usado
-  await admin
-    .from('convites')
-    .update({ usado: true, usado_por: userId, usado_em: new Date().toISOString() })
-    .eq('id', convite.id)
+  // Marca o código como usado
+  if (resultado.bootstrap) {
+    // Registra o uso do código bootstrap na tabela para travar próximos usos
+    await admin.from('convites').upsert(
+      { codigo: SENTINEL_BOOTSTRAP, usado: true, usado_por: userId, usado_em: new Date().toISOString() },
+      { onConflict: 'codigo' }
+    )
+  } else if (resultado.convite) {
+    await admin
+      .from('convites')
+      .update({ usado: true, usado_por: userId, usado_em: new Date().toISOString() })
+      .eq('id', resultado.convite.id)
+  }
 
   return NextResponse.json({ ok: true })
 }
